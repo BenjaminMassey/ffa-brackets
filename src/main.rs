@@ -5,8 +5,7 @@ fn main() {
     let desired_size: usize = 4; // TODO: input
 
     // init
-    let mut current_id = 0; // TODO: rand
-    let mut ids: HashSet<u8> = HashSet::new();
+    let mut ids: HashSet<u32> = HashSet::new();
     let mut bracket = Bracket {
         players: vec![],
         matches: vec![],
@@ -15,17 +14,14 @@ fn main() {
     //players
     let player_names = get_players(); // TODO: input
     for name in player_names {
-        current_id += 1; // TODO: rand
         bracket.players.push(Player {
-            id: PlayerId(current_id),
+            id: PlayerId(new_id(&mut ids)),
             name,
         });
     }
 
     // matches
-    let mut matches: Vec<Match> = vec![];
     for group in bracket.players.chunks(desired_size) {
-        current_id += 1; // TODO: rand
         let player_ids: Vec<PlayerId> = group.iter().map(|p| p.id).collect();
         let player_results: HashMap<PlayerId, PlayerResult> = player_ids
             .iter()
@@ -34,7 +30,7 @@ fn main() {
             .into_iter()
             .collect();
         bracket.matches.push(Match {
-            id: MatchId(current_id),
+            id: MatchId(new_id(&mut ids)),
             resulting_match: None, // TODO: does this make sense?
             players: player_ids,
             states: player_results,
@@ -45,13 +41,26 @@ fn main() {
     // TODO:
 }
 
+fn new_id(ids: &mut HashSet<u32>) -> u32 {
+    if ids.len() >= std::u32::MAX as usize {
+        panic!("Too many items for id gen.");
+    }
+    loop {
+        let x: u32 = rand::random();
+        if !ids.contains(&x) {
+            ids.insert(x);
+            return x;
+        }
+    }
+}
+
 struct Bracket {
     players: Vec<Player>,
     matches: Vec<Match>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
-struct PlayerId(u8);
+struct PlayerId(u32);
 struct Player {
     id: PlayerId,
     name: String,
@@ -64,7 +73,7 @@ enum PlayerResult {
 }
 
 #[derive(Copy, Clone)]
-struct MatchId(u8);
+struct MatchId(u32);
 struct Match {
     id: MatchId,
     resulting_match: Option<MatchId>, // None = final
