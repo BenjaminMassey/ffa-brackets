@@ -1,39 +1,66 @@
-use iced::widget::{Button, Column, Row, button, text};
+use iced::Center;
+use iced::widget::{Button, Column, Row, button, scrollable, text};
 
 use crate::bracket;
+use crate::data;
 
 #[derive(Default)]
 pub struct App {
     pub bracket: bracket::Bracket,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Message {
-    Ping,
+    Result(data::MatchId, data::PlayerId, data::PlayerResult),
+    Finish(data::MatchId),
 }
 
 impl App {
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::Ping => {
-                println!("Pong");
+            Message::Result(mid, pid, pr) => {
+                *self
+                    .bracket
+                    .matches
+                    .get_mut(&mid)
+                    .unwrap()
+                    .states
+                    .get_mut(&pid)
+                    .unwrap() = pr;
+            }
+            Message::Finish(mid) => {
+                self.bracket.finish(&mid);
             }
         }
     }
-    pub fn view(&self) -> Column<'_, Message> {
+    pub fn view(&self) -> iced::Element<'_, Message> {
         let mut root = Column::new().spacing(50);
-        for (_id, m) in &self.bracket.matches {
-            let mut match_container: Column<'_, Message> = Column::new();
+        for (mid, m) in &self.bracket.matches {
+            let mut match_container: Row<'_, Message> = Row::new().spacing(40).align_y(Center);
+            let mut player_list: Column<'_, Message> = Column::new().spacing(10);
             for pid in &m.players {
                 let pname = &self.bracket.players[&pid].name;
-                let mut player_container: Row<'_, Message> = Row::new();
-                player_container = player_container.push(text(pname));
-                let but: Button<'_, Message> = button("!").on_press(Message::Ping);
-                player_container = player_container.push(but);
-                match_container = match_container.push(player_container);
+                let ptext = format!("{} [{}]", pname, m.states[&pid]);
+                let mut player_container: Row<'_, Message> = Row::new().spacing(20);
+                player_container = player_container.push(text(ptext).size(28));
+                if m.states[&pid] == data::PlayerResult::Unplayed {
+                    let win_button: Button<'_, Message> =
+                        button("W").on_press(Message::Result(*mid, *pid, data::PlayerResult::Won));
+                    player_container = player_container.push(win_button);
+                    let lose_button: Button<'_, Message> =
+                        button("L").on_press(Message::Result(*mid, *pid, data::PlayerResult::Lost));
+                    player_container = player_container.push(lose_button);
+                }
+                player_list = player_list.push(player_container);
+            }
+            match_container = match_container.push(player_list);
+            if !m.finished {
+                let finish_button: Button<'_, Message> =
+                    button("Finish").on_press(Message::Finish(*mid));
+                match_container = match_container.push(finish_button);
             }
             root = root.push(match_container);
         }
-        root
+        scrollable(root).into()
     }
 }

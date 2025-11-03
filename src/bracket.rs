@@ -19,6 +19,7 @@ impl Default for Bracket {
         };
         bracket.make_players();
         bracket.make_groups();
+        bracket.connect_matches();
         bracket
     }
 }
@@ -57,6 +58,16 @@ impl Bracket {
         self.fill_group(&mut problem_group);
         self.add_group(&problem_group);
     }
+    pub fn connect_matches(&mut self) {
+        let chunkable = self.matches.clone();
+        let matches = chunkable.keys().collect::<Vec<&data::MatchId>>();
+        let mut pairs = matches.chunks_exact(2);
+        for pair in pairs.by_ref() {
+            (*self.matches.get_mut(pair[0]).unwrap()).connection = Some(pair[1].clone());
+            (*self.matches.get_mut(pair[1]).unwrap()).connection = Some(pair[0].clone());
+        }
+        // TODO: handle potential remainder match
+    }
     pub fn add_group(&mut self, group: &[data::PlayerId]) {
         let player_results: HashMap<data::PlayerId, data::PlayerResult> = group
             .iter()
@@ -69,9 +80,10 @@ impl Bracket {
             id,
             data::Match {
                 id,
-                resulting_match: None, // TODO: does this make sense?
+                connection: None,
                 players: group.to_vec(),
                 states: player_results,
+                finished: false,
             },
         );
     }
@@ -95,6 +107,21 @@ impl Bracket {
             let stolen_id = self.matches.get_mut(&key).unwrap().players.remove(0);
             problem_group.push(stolen_id);
         }
+    }
+    pub fn finish(&mut self, mid: &data::MatchId) {
+        for pid in self.matches[mid].clone().players.iter().as_ref() {
+            if self.matches[mid].states[pid] == data::PlayerResult::Unplayed {
+                *self
+                    .matches
+                    .get_mut(mid)
+                    .unwrap()
+                    .states
+                    .get_mut(pid)
+                    .unwrap() = data::PlayerResult::Lost;
+            }
+        }
+        (*self.matches.get_mut(mid).unwrap()).finished = true;
+        // TODO: handle new match creation based on connection field
     }
     // TODO: real input system
     fn get_players(&self) -> Vec<String> {
