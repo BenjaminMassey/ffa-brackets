@@ -1,3 +1,4 @@
+use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};
 
 use crate::data;
@@ -8,24 +9,20 @@ pub struct Bracket {
     pub players: HashMap<data::PlayerId, data::Player>,
     pub matches: HashMap<data::MatchId, data::Match>,
 }
-impl Bracket {
-    pub fn new(desired_size: usize) -> Self {
-        Self {
+impl Default for Bracket {
+    fn default() -> Self {
+        let mut bracket = Self {
             ids: HashSet::new(),
-            desired_size,
+            desired_size: 4, // TODO: configurable
             players: HashMap::new(),
             matches: HashMap::new(),
-        }
+        };
+        bracket.make_players();
+        bracket.make_groups();
+        bracket
     }
-    pub fn display(&self) {
-        for (mid, m) in &self.matches {
-            println!("==============");
-            for p in &m.players {
-                println!("{} [{}]", self.players[p].name, m.states[p]);
-            }
-            println!("==============\n");
-        }
-    }
+}
+impl Bracket {
     pub fn new_id(&mut self) -> u32 {
         if self.ids.len() >= std::u32::MAX as usize {
             panic!("Too many items for id gen.");
@@ -36,6 +33,14 @@ impl Bracket {
                 self.ids.insert(x);
                 return x;
             }
+        }
+    }
+    pub fn make_players(&mut self) {
+        let mut player_names = self.get_players(); // TODO: input
+        player_names.shuffle(&mut rand::rng());
+        for name in player_names {
+            let id = data::PlayerId(self.new_id());
+            self.players.insert(id, data::Player { id, name });
         }
     }
     pub fn make_groups(&mut self) {
@@ -90,5 +95,28 @@ impl Bracket {
             let stolen_id = self.matches.get_mut(&key).unwrap().players.remove(0);
             problem_group.push(stolen_id);
         }
+    }
+    // TODO: real input system
+    fn get_players(&self) -> Vec<String> {
+        vec![
+            "Thomas".to_owned(),
+            "Syd".to_owned(),
+            "Ben".to_owned(),
+            "Atharv".to_owned(),
+            "Tilford".to_owned(),
+            "Lucas".to_owned(),
+            "Ethan".to_owned(),
+            "Natalie".to_owned(),
+            "A".to_owned(),
+            "B".to_owned(),
+            "C".to_owned(),
+            "D".to_owned(),
+            "E".to_owned(),
+            "F".to_owned(),
+            "G".to_owned(),
+            "H".to_owned(),
+            "I".to_owned(),
+            "J".to_owned(),
+        ]
     }
 }
