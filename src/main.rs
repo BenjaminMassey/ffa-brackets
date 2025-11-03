@@ -1,12 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 fn main() {
-    // parameters
-    let desired_size: usize = 4; // TODO: input
-
     // init
     let mut ids: HashSet<u32> = HashSet::new();
     let mut bracket = Bracket {
+        desired_size: 4, // TODO: input
         players: HashMap::new(),
         matches: HashMap::new(),
     };
@@ -19,31 +17,18 @@ fn main() {
     }
 
     // matches
-    for group in bracket
+    let groups = bracket
         .players
         .keys()
         .map(|k| *k)
-        .collect::<Vec<PlayerId>>()
-        .chunks(desired_size)
-    {
-        let player_results: HashMap<PlayerId, PlayerResult> = group
-            .iter()
-            .map(|p| (*p, PlayerResult::Unplayed))
-            .collect::<Vec<(PlayerId, PlayerResult)>>()
-            .into_iter()
-            .collect();
-        let id = MatchId(new_id(&mut ids));
-        bracket.matches.insert(
-            id,
-            Match {
-                id,
-                resulting_match: None, // TODO: does this make sense?
-                players: group.to_vec(),
-                states: player_results,
-            },
-        );
+        .collect::<Vec<PlayerId>>();
+    let mut chunked_groups = groups.chunks_exact(bracket.desired_size);
+    for group in chunked_groups.by_ref() {
+        bracket.add_group(group, &mut ids);
     }
-    // TODO: some filtering process to make match counts optimal
+    let mut problem_group = chunked_groups.remainder().to_vec();
+    bracket.fill_group(&mut problem_group);
+    bracket.add_group(&problem_group, &mut ids);
 
     // display
     bracket.display();
@@ -63,6 +48,7 @@ fn new_id(ids: &mut HashSet<u32>) -> u32 {
 }
 
 struct Bracket {
+    desired_size: usize,
     players: HashMap<PlayerId, Player>,
     matches: HashMap<MatchId, Match>,
 }
@@ -76,6 +62,41 @@ impl Bracket {
             println!("==============\n");
         }
     }
+    fn add_group(&mut self, group: &[PlayerId], ids: &mut HashSet<u32>) {
+        let player_results: HashMap<PlayerId, PlayerResult> = group
+            .iter()
+            .map(|p| (*p, PlayerResult::Unplayed))
+            .collect::<Vec<(PlayerId, PlayerResult)>>()
+            .into_iter()
+            .collect();
+        let id = MatchId(new_id(ids));
+        self.matches.insert(
+            id,
+            Match {
+                id,
+                resulting_match: None, // TODO: does this make sense?
+                players: group.to_vec(),
+                states: player_results,
+            },
+        );
+    }
+    fn fill_group(&mut self, problem_group: &mut Vec<PlayerId>) {
+        let mut fudged_indices: HashSet<usize> = HashSet::new();
+        for _ in 0..(self.desired_size - problem_group.len()) {
+            let mut index_to_fudge: usize = 0;
+            loop {
+                let i: usize = rand::random_range(0..self.matches.len());
+                if !fudged_indices.contains(&i) {
+                    fudged_indices.insert(i);
+                    index_to_fudge = i;
+                    break;
+                }
+            }
+            let key = self.matches.clone().into_keys().collect::<Vec<MatchId>>()[index_to_fudge];
+            let stolen_id = self.matches.get_mut(&key).unwrap().players.remove(0);
+            problem_group.push(stolen_id);
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -85,6 +106,7 @@ struct Player {
     name: String,
 }
 
+#[derive(Clone)]
 enum PlayerResult {
     Unplayed,
     Pass,
@@ -103,6 +125,7 @@ impl std::fmt::Display for PlayerResult {
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 struct MatchId(u32);
+#[derive(Clone)]
 struct Match {
     id: MatchId,
     resulting_match: Option<MatchId>,
