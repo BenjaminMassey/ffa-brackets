@@ -33,4 +33,16 @@ pub struct Match {
     pub players: Vec<PlayerId>,
     pub states: HashMap<PlayerId, PlayerResult>,
     pub finished: bool,
+    pub round: usize,
+}
+impl Match {
+    pub fn winners(&self) -> Vec<PlayerId> {
+        let mut res: Vec<PlayerId> = vec![];
+        for (pid, pr) in &self.states {
+            if pr == &PlayerResult::Won {
+                res.push(*pid)
+            }
+        }
+        res
+    }
 }

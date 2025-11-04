@@ -8,6 +8,7 @@ pub struct Bracket {
     pub desired_size: usize,
     pub players: HashMap<data::PlayerId, data::Player>,
     pub matches: HashMap<data::MatchId, data::Match>,
+    pub rounds: Vec<Vec<data::MatchId>>,
 }
 impl Default for Bracket {
     fn default() -> Self {
@@ -16,6 +17,7 @@ impl Default for Bracket {
             desired_size: 4, // TODO: configurable
             players: HashMap::new(),
             matches: HashMap::new(),
+            rounds: vec![],
         };
         bracket.make_players();
         bracket.make_groups();
@@ -52,23 +54,27 @@ impl Bracket {
             .collect::<Vec<data::PlayerId>>();
         let mut chunked_groups = groups.chunks_exact(self.desired_size);
         for group in chunked_groups.by_ref() {
-            self.add_group(group);
+            self.add_group(group, 0);
         }
         let mut problem_group = chunked_groups.remainder().to_vec();
         self.fill_group(&mut problem_group);
-        self.add_group(&problem_group);
+        self.add_group(&problem_group, 0);
     }
     pub fn connect_matches(&mut self) {
-        let chunkable = self.matches.clone();
-        let matches = chunkable.keys().collect::<Vec<&data::MatchId>>();
-        let mut pairs = matches.chunks_exact(2);
-        for pair in pairs.by_ref() {
-            (*self.matches.get_mut(pair[0]).unwrap()).connection = Some(pair[1].clone());
-            (*self.matches.get_mut(pair[1]).unwrap()).connection = Some(pair[0].clone());
+        for round in &self.rounds {
+            let unconnected = round
+                .iter()
+                .filter(|mid| self.matches[mid].connection.is_none())
+                .collect::<Vec<&data::MatchId>>();
+            let mut pairs = unconnected.chunks_exact(2);
+            for pair in pairs.by_ref() {
+                (*self.matches.get_mut(&pair[0]).unwrap()).connection = Some(pair[1].clone());
+                (*self.matches.get_mut(&pair[1]).unwrap()).connection = Some(pair[0].clone());
+            }
         }
-        // TODO: handle potential remainder match
+        // TODO: handle potential remainder match (cross-round D:)
     }
-    pub fn add_group(&mut self, group: &[data::PlayerId]) {
+    pub fn add_group(&mut self, group: &[data::PlayerId], round: usize) {
         let player_results: HashMap<data::PlayerId, data::PlayerResult> = group
             .iter()
             .map(|p| (*p, data::PlayerResult::Unplayed))
@@ -84,8 +90,11 @@ impl Bracket {
                 players: group.to_vec(),
                 states: player_results,
                 finished: false,
+                round,
             },
         );
+        self.add_to_round(&id, round);
+        self.connect_matches();
     }
     pub fn fill_group(&mut self, problem_group: &mut Vec<data::PlayerId>) {
         let mut fudged_indices: HashSet<usize> = HashSet::new();
@@ -108,6 +117,12 @@ impl Bracket {
             problem_group.push(stolen_id);
         }
     }
+    pub fn add_to_round(&mut self, mid: &data::MatchId, round: usize) {
+        while self.rounds.len() <= round {
+            self.rounds.push(vec![]);
+        }
+        self.rounds.get_mut(round).unwrap().push(*mid);
+    }
     pub fn finish(&mut self, mid: &data::MatchId) {
         for pid in self.matches[mid].clone().players.iter().as_ref() {
             if self.matches[mid].states[pid] == data::PlayerResult::Unplayed {
@@ -121,6 +136,15 @@ impl Bracket {
             }
         }
         (*self.matches.get_mut(mid).unwrap()).finished = true;
+        if let Some(cmid) = &self.matches[mid].connection {
+            if self.matches[cmid].finished {
+                let mut next_players = self.matches[mid].winners();
+                next_players.append(&mut self.matches[cmid].winners());
+                let next_round =
+                    std::cmp::max(self.matches[mid].round, self.matches[cmid].round) + 1;
+                self.add_group(&next_players, next_round);
+            }
+        }
         // TODO: handle new match creation based on connection field
     }
     // TODO: real input system
