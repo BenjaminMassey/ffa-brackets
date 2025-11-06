@@ -32,7 +32,7 @@ impl Bracket {
         }
         loop {
             let x: u32 = rand::random();
-            if !self.ids.contains(&x) {
+            if !self.ids.contains(&x) && x != 0 {
                 self.ids.insert(x);
                 return x;
             }
@@ -64,7 +64,7 @@ impl Bracket {
         for round in &self.rounds {
             let unconnected = round
                 .iter()
-                .filter(|mid| self.matches[mid].connection.is_none())
+                .filter(|mid| mid != &&data::MatchId(0) && self.matches[mid].connection.is_none())
                 .collect::<Vec<&data::MatchId>>();
             let mut pairs = unconnected.chunks_exact(2);
             for pair in pairs.by_ref() {
@@ -121,7 +121,30 @@ impl Bracket {
         while self.rounds.len() <= round {
             self.rounds.push(vec![]);
         }
-        self.rounds.get_mut(round).unwrap().push(*mid);
+        let index = self.get_index_for_round_insert(mid, round);
+        if let Some(i) = index {
+            while self.rounds[round].len() <= i {
+                self.rounds.get_mut(round).unwrap().push(data::MatchId(0));
+            }
+            self.rounds.get_mut(round).unwrap()[i] = *mid;
+        } else {
+            self.rounds.get_mut(round).unwrap().push(*mid);
+        }
+    }
+    fn get_index_for_round_insert(&self, mid: &data::MatchId, round: usize) -> Option<usize> {
+        if round > 0 {
+            for i in 0..self.rounds[round - 1].len() {
+                let entry = &self.rounds[round - 1][i];
+                for p0 in &self.matches[entry].players {
+                    for p1 in &self.matches[mid].players {
+                        if p0 == p1 {
+                            return Some((i as f32 / 2f32).floor() as usize);
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
     pub fn finish(&mut self, mid: &data::MatchId) {
         for pid in self.matches[mid].clone().players.iter().as_ref() {
@@ -136,14 +159,13 @@ impl Bracket {
             }
         }
         (*self.matches.get_mut(mid).unwrap()).finished = true;
-        if let Some(cmid) = &self.matches[mid].connection {
-            if self.matches[cmid].finished {
-                let mut next_players = self.matches[mid].winners();
-                next_players.append(&mut self.matches[cmid].winners());
-                let next_round =
-                    std::cmp::max(self.matches[mid].round, self.matches[cmid].round) + 1;
-                self.add_group(&next_players, next_round);
-            }
+        if let Some(cmid) = &self.matches[mid].connection
+            && self.matches[cmid].finished
+        {
+            let mut next_players = self.matches[mid].winners();
+            next_players.append(&mut self.matches[cmid].winners());
+            let next_round = std::cmp::max(self.matches[mid].round, self.matches[cmid].round) + 1;
+            self.add_group(&next_players, next_round);
         }
         // TODO: handle new match creation based on connection field
     }

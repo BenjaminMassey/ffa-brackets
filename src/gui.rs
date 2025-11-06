@@ -1,5 +1,5 @@
 use iced::Center;
-use iced::widget::{Button, Column, Row, button, scrollable, text};
+use iced::widget::{Button, Column, Row, button, container, scrollable, text};
 
 use crate::bracket;
 use crate::data;
@@ -40,6 +40,11 @@ impl App {
                 .padding(iced::padding::top(50f32 * (3 * i) as f32))
                 .spacing(50f32 * ((4 * i) + 3) as f32);
             for mid in round {
+                if mid == &data::MatchId(0) {
+                    round_container = round_container.push(container("").height(250));
+                    // TODO: better temp
+                    continue;
+                }
                 let m = self.bracket.matches[mid].clone();
                 let mut match_container: Row<'_, Message> = Row::new().spacing(40).align_y(Center);
                 let mut player_list: Column<'_, Message> = Column::new().spacing(10);
