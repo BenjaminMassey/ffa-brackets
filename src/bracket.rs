@@ -53,15 +53,18 @@ impl Bracket {
             .map(|k| *k)
             .collect::<Vec<data::PlayerId>>();
         let mut chunked_groups = groups.chunks_exact(self.desired_size);
-        for group in chunked_groups.by_ref() {
-            self.add_group(group, 0);
-        }
         let mut problem_group = chunked_groups.remainder().to_vec();
-        self.fill_group(&mut problem_group);
-        self.add_group(&problem_group, 0);
+        for group in chunked_groups.by_ref() {
+            self.add_group(group, if problem_group.is_empty() { 0 } else { 1 });
+        }
+        if !problem_group.is_empty() {
+            self.fill_group(&mut problem_group);
+            self.add_group(&problem_group, 0);
+        }
+        self.connect_matches();
     }
     pub fn connect_matches(&mut self) {
-        for round in &self.rounds {
+        for (ri, round) in self.rounds.iter().enumerate() {
             let unconnected = round
                 .iter()
                 .filter(|mid| mid != &&data::MatchId(0) && self.matches[mid].connection.is_none())
@@ -71,8 +74,16 @@ impl Bracket {
                 (*self.matches.get_mut(&pair[0]).unwrap()).connection = Some(pair[1].clone());
                 (*self.matches.get_mut(&pair[1]).unwrap()).connection = Some(pair[0].clone());
             }
+            let extra = pairs.remainder().to_vec();
+            if !extra.is_empty() &&
+                ri + 1 < self.rounds.len() &&
+                !&self.rounds[ri + 1].is_empty() &&
+                self.matches[&self.rounds[ri + 1][0]].connection.is_none()
+            {
+                (*self.matches.get_mut(&extra[0]).unwrap()).connection = Some(self.rounds[ri + 1][0].clone());
+                (*self.matches.get_mut(&self.rounds[ri + 1][0]).unwrap()).connection = Some(extra[0].clone());
+            }
         }
-        // TODO: handle potential remainder match (cross-round D:)
     }
     pub fn add_group(&mut self, group: &[data::PlayerId], round: usize) {
         let player_results: HashMap<data::PlayerId, data::PlayerResult> = group
@@ -93,8 +104,9 @@ impl Bracket {
                 round,
             },
         );
-        self.add_to_round(&id, round);
-        self.connect_matches();
+        self.add_to_round(&id, None, round);
+        // TODO: this round business is all hogwash and I hate it and it's unfinished
+        //self.connect_matches();
     }
     pub fn fill_group(&mut self, problem_group: &mut Vec<data::PlayerId>) {
         let mut fudged_indices: HashSet<usize> = HashSet::new();
@@ -117,34 +129,55 @@ impl Bracket {
             problem_group.push(stolen_id);
         }
     }
-    pub fn add_to_round(&mut self, mid: &data::MatchId, round: usize) {
+    pub fn add_to_round(&mut self, mid: &data::MatchId, cid: Option<&data::MatchId>, round: usize) {
         while self.rounds.len() <= round {
             self.rounds.push(vec![]);
         }
-        let index = self.get_index_for_round_insert(mid, round);
-        if let Some(i) = index {
-            while self.rounds[round].len() <= i {
-                self.rounds.get_mut(round).unwrap().push(data::MatchId(0));
+        if let Some(cid) = cid {
+            let (rounds_i, round_i) = self.get_indices_for_round_insert(mid, cid);
+            while self.rounds[rounds_i].len() <= round_i {
+                self.rounds.get_mut(rounds_i).unwrap().push(data::MatchId(0));
             }
-            self.rounds.get_mut(round).unwrap()[i] = *mid;
+            self.rounds.get_mut(rounds_i).unwrap()[round_i] = *mid;
         } else {
             self.rounds.get_mut(round).unwrap().push(*mid);
         }
     }
-    fn get_index_for_round_insert(&self, mid: &data::MatchId, round: usize) -> Option<usize> {
-        if round > 0 {
-            for i in 0..self.rounds[round - 1].len() {
-                let entry = &self.rounds[round - 1][i];
-                for p0 in &self.matches[entry].players {
-                    for p1 in &self.matches[mid].players {
-                        if p0 == p1 {
-                            return Some((i as f32 / 2f32).floor() as usize);
-                        }
-                    }
+    fn get_indices_for_round_insert(&self, mid1: &data::MatchId, mid2: &data::MatchId) -> (usize, usize) {
+        let mut m1 = self.matches[mid1].clone();
+        let mut m2 = self.matches[mid2].clone();
+        if m1.round > m2.round {
+            let temp = m1.clone();
+            m1 = m2.clone();
+            m2 = temp.clone();
+        }
+
+        let m1_index = {
+            let mut res = 0;
+            for (i, mid) in self.rounds[m1.round].iter().enumerate() {
+                if mid == mid1 {
+                    res = i;
+                    break;
                 }
             }
+            res
+        };
+        let m2_index = {
+            let mut res = 0;
+            for (i, mid) in self.rounds[m2.round].iter().enumerate() {
+                if mid == mid2 {
+                    res = i;
+                    break;
+                }
+            }
+            res
+        };
+
+        if m1.round == m2.round {
+            (m1.round + 1, m1_index)
+        } else {
+            (m2.round + 1, m1_index)
         }
-        None
     }
     pub fn finish(&mut self, mid: &data::MatchId) {
         for pid in self.matches[mid].clone().players.iter().as_ref() {
@@ -166,6 +199,7 @@ impl Bracket {
             next_players.append(&mut self.matches[cmid].winners());
             let next_round = std::cmp::max(self.matches[mid].round, self.matches[cmid].round) + 1;
             self.add_group(&next_players, next_round);
+            self.connect_matches();
         }
         // TODO: handle new match creation based on connection field
     }
